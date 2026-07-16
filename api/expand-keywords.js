@@ -41,7 +41,7 @@ export default async function handler(req, res) {
 { "keywords": ["키워드1", "키워드2", "..."] }`;
 
   try {
-    const raw = await runPrompt(prompt, { maxTokens: 400, temperature: 0.5 });
+    const raw = await runPrompt(prompt, { maxTokens: 1500, temperature: 0.5 });
     const parsed = extractJson(raw);
     const keywords = (Array.isArray(parsed.keywords) ? parsed.keywords : [])
       .map((k) => asString(k, 20).trim())

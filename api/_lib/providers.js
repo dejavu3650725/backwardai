@@ -93,8 +93,18 @@ export async function buildGeminiCandidates(apiKey) {
   return [...new Set(candidates)];
 }
 
-export async function callGemini(apiKey, prompt, { maxTokens = 1500, temperature = 0.4 } = {}) {
-  const doCall = async (modelName) => {
+export async function callGemini(apiKey, prompt, { maxTokens = 4000, temperature = 0.4 } = {}) {
+  const doCall = async (modelName, disableThinking) => {
+    const generationConfig = {
+      temperature,
+      maxOutputTokens: maxTokens,
+      responseMimeType: 'application/json',
+    };
+    // ⚠️ 2.5+ 세대는 '생각(thinking)' 토큰이 출력 예산을 잠식해 JSON이
+    //    중간에 잘릴 수 있다 → 생각 기능을 끈다. (미지원 모델은 400을
+    //    반환하므로 아래에서 생각 설정 없이 1회 재시도)
+    if (disableThinking) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+
     // 인증은 x-goog-api-key 헤더 사용 (신형 AQ. 키 포함 공식 권장 방식)
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
     return fetch(url, {
@@ -102,11 +112,7 @@ export async function callGemini(apiKey, prompt, { maxTokens = 1500, temperature
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature,
-          maxOutputTokens: maxTokens,
-          responseMimeType: 'application/json',
-        },
+        generationConfig,
       }),
     });
   };
@@ -115,15 +121,25 @@ export async function callGemini(apiKey, prompt, { maxTokens = 1500, temperature
   let lastError = null;
 
   for (const model of candidates) {
-    const response = await doCall(model);
+    let response = await doCall(model, true);
+
+    // thinkingConfig 미지원 모델(구형)은 400 → 설정 없이 재시도
+    if (response.status === 400) {
+      response = await doCall(model, false);
+    }
 
     if (response.ok) {
       cachedGeminiModel = model; // 성공한 모델을 기억해 다음 호출부터 바로 사용
       const data = await response.json();
-      const text = data?.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text || '')
-        .join('');
-      if (!text) throw new Error(`Gemini(${model}) 응답에 텍스트가 없습니다.`);
+      const candidate = data?.candidates?.[0];
+      const text = candidate?.content?.parts?.map((p) => p.text || '').join('');
+      if (!text) {
+        throw new Error(
+          `Gemini(${model}) 응답에 텍스트가 없습니다. (finishReason: ${
+            candidate?.finishReason || '알 수 없음'
+          })`
+        );
+      }
       return text;
     }
 

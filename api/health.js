@@ -52,7 +52,7 @@ export default async function handler(req, res) {
   try {
     const text = await runPrompt(
       '아무 설명 없이 정확히 다음 JSON만 출력하세요: {"status":"ok"}',
-      { maxTokens: 200, temperature: 0 }
+      { maxTokens: 1000, temperature: 0 }
     );
     out.ok = true;
     out.sample = String(text).slice(0, 100);

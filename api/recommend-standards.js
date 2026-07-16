@@ -50,7 +50,7 @@ export default async function handler(req, res) {
   const prompt = buildPrompt({ topic: topic.trim(), grade, candidates: safeCandidates });
 
   try {
-    const raw = await runPrompt(prompt, { maxTokens: 1500, temperature: 0.4 });
+    const raw = await runPrompt(prompt, { maxTokens: 4000, temperature: 0.4 });
     const parsed = extractJson(raw);
 
     // 출력 검증: 후보에 없는 코드는 제거(환각 방지)

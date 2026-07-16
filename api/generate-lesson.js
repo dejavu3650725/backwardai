@@ -49,7 +49,7 @@ export default async function handler(req, res) {
   });
 
   try {
-    const raw = await runPrompt(prompt, { maxTokens: 4096, temperature: 0.5 });
+    const raw = await runPrompt(prompt, { maxTokens: 8000, temperature: 0.5 });
     const parsed = extractJson(raw);
     const plan = sanitizePlan(parsed, { topic, standards: safeStandards, rubric: safeRubric });
 

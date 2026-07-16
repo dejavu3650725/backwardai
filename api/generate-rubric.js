@@ -36,7 +36,7 @@ export default async function handler(req, res) {
   const prompt = buildPrompt({ topic: asString(topic, 200), standards: safeStandards });
 
   try {
-    const raw = await runPrompt(prompt, { maxTokens: 3000, temperature: 0.4 });
+    const raw = await runPrompt(prompt, { maxTokens: 6000, temperature: 0.4 });
     const parsed = extractJson(raw);
 
     const allowedCodes = new Set(safeStandards.map((s) => s.code));
