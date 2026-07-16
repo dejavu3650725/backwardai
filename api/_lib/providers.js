@@ -34,24 +34,94 @@ export async function runPrompt(prompt, opts = {}) {
 }
 
 /* ── Gemini (REST) ─────────────────────────────────────────────── */
-export async function callGemini(apiKey, prompt, { maxTokens = 1500, temperature = 0.4 } = {}) {
-  // 기본 모델: gemini-3.5-flash (2026년 기준 현행 텍스트 모델)
-  // 이전 세대(1.5/2.0 flash)는 서비스 종료되어 404를 반환합니다.
-  const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature,
-        maxOutputTokens: maxTokens,
-        responseMimeType: 'application/json',
-      },
-    }),
-  });
+/** 워밍된 람다 인스턴스 안에서 재사용되는 모델명 캐시 */
+let cachedGeminiModel = null;
+
+/** 이 키로 generateContent 가능한 모델 목록 조회 */
+export async function listGeminiModels(apiKey) {
+  const response = await fetch(
+    'https://generativelanguage.googleapis.com/v1beta/models?pageSize=50',
+    { headers: { 'x-goog-api-key': apiKey } }
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Gemini 모델 목록 조회 실패 ${response.status}: ${body.slice(0, 200)}`);
+  }
+  const data = await response.json();
+  return (data.models || [])
+    .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
+    .map((m) => String(m.name || '').replace(/^models\//, ''))
+    .filter(Boolean);
+}
+
+/**
+ * 사용할 Gemini 모델 자동 선택
+ * - GEMINI_MODEL 환경변수가 있으면 그것을 최우선 사용
+ * - 없으면 키로 실제 사용 가능한 모델 목록을 조회해 flash 계열 중
+ *   최신 버전을 선택 (모델명 하드코딩으로 인한 404를 원천 차단)
+ */
+export async function pickGeminiModel(apiKey) {
+  if (process.env.GEMINI_MODEL) return process.env.GEMINI_MODEL;
+  if (cachedGeminiModel) return cachedGeminiModel;
+
+  const models = await listGeminiModels(apiKey);
+  const preferred = [
+    'gemini-3.5-flash',
+    'gemini-3-flash',
+    'gemini-2.5-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
+  ];
+  let chosen = preferred.find((p) => models.includes(p));
+  if (!chosen) {
+    // 선호 목록에 없으면: 특수 모델(이미지/오디오 등)을 제외한
+    // flash 계열 중 이름 정렬상 최신 버전을 선택
+    chosen = models
+      .filter(
+        (n) =>
+          n.includes('flash') &&
+          !/image|audio|live|tts|embedding|preview/.test(n)
+      )
+      .sort()
+      .reverse()[0] || models.find((n) => !/embedding/.test(n));
+  }
+  if (!chosen) {
+    throw new Error('이 API 키로 사용 가능한 Gemini 생성 모델이 없습니다.');
+  }
+  cachedGeminiModel = chosen;
+  return chosen;
+}
+
+export async function callGemini(apiKey, prompt, { maxTokens = 1500, temperature = 0.4 } = {}) {
+  const model = await pickGeminiModel(apiKey);
+
+  const doCall = async (modelName) => {
+    // 인증은 x-goog-api-key 헤더 사용 (신형 AQ. 키 포함 공식 권장 방식)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+          responseMimeType: 'application/json',
+        },
+      }),
+    });
+  };
+
+  let response = await doCall(model);
+
+  // 모델이 그 사이 종료된 경우(404) 캐시를 비우고 한 번 재탐색
+  if (response.status === 404 && !process.env.GEMINI_MODEL) {
+    cachedGeminiModel = null;
+    const retryModel = await pickGeminiModel(apiKey);
+    if (retryModel !== model) response = await doCall(retryModel);
+  }
 
   if (!response.ok) {
     const body = await response.text();
@@ -59,7 +129,9 @@ export async function callGemini(apiKey, prompt, { maxTokens = 1500, temperature
   }
 
   const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text = data?.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text || '')
+    .join('');
   if (!text) throw new Error('Gemini 응답에 텍스트가 없습니다.');
   return text;
 }

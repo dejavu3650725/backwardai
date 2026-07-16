@@ -39,7 +39,16 @@ async function postJson(endpoint, body, timeoutMs = REQUEST_TIMEOUT_MS) {
       signal: controller.signal,
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`API 응답 오류 (${res.status})`);
+    if (!res.ok) {
+      // 서버가 전달한 실제 오류 사유를 최대한 살려서 던진다 (디버깅 용이)
+      let detail = '';
+      try {
+        detail = (await res.json())?.error || '';
+      } catch {
+        /* body가 JSON이 아니면 무시 */
+      }
+      throw new Error(detail ? `API ${res.status}: ${detail}` : `API 응답 오류 (${res.status})`);
+    }
     return await res.json();
   } finally {
     clearTimeout(timer);
