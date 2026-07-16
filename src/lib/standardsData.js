@@ -155,6 +155,32 @@ export function localKeywordSearch(topic, { grade = null, limit = 40 } = {}) {
   return scored.slice(0, limit);
 }
 
+/**
+ * 과목별 균형 샘플 추출
+ * ------------------------------------------------------------------
+ * 키워드 매칭이 빈약한 주제(예: '월드컵', '크리스마스')일 때
+ * AI에게 넘길 후보 풀을 보강하기 위해, 과목마다 고르게 성취기준을
+ * 뽑아 반환합니다. 같은 과목 안에서는 영역(area) 다양성이 살도록
+ * 등간격(stride)으로 샘플링합니다.
+ */
+export function getBalancedSample(grade = null, perSubject = 4) {
+  const pool = grade ? STANDARDS.filter((s) => s.grade === grade) : STANDARDS;
+  const bySubject = new Map();
+  for (const s of pool) {
+    if (!bySubject.has(s.subject)) bySubject.set(s.subject, []);
+    bySubject.get(s.subject).push(s);
+  }
+  const sample = [];
+  for (const list of bySubject.values()) {
+    const stride = Math.max(1, Math.floor(list.length / perSubject));
+    for (let i = 0; i < list.length && sample.length < 1000; i += stride) {
+      sample.push(list[i]);
+      if ((i / stride + 1) >= perSubject) break;
+    }
+  }
+  return sample;
+}
+
 /** 유틸: 문자열 말줄임 */
 export function truncate(text, max) {
   const t = String(text || '');

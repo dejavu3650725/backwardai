@@ -13,7 +13,7 @@
  *   4) 백엔드가 없거나(로컬 미리보기) 오류가 나면, 로컬 점수 기반
  *      폴백 결과를 만들어 UI가 끊기지 않도록 합니다.
  */
-import { localKeywordSearch, findByCode, truncate } from './standardsData.js';
+import { localKeywordSearch, getBalancedSample, findByCode, truncate } from './standardsData.js';
 
 const API_ENDPOINT = '/api/recommend-standards';
 const RUBRIC_ENDPOINT = '/api/generate-rubric';
@@ -57,7 +57,21 @@ export async function recommendStandards(topic, opts = {}) {
   }
 
   // 1) 후보군 프리필터 (상위 40건)
-  const candidates = localKeywordSearch(trimmed, { grade: opts.grade || null, limit: 40 });
+  let candidates = localKeywordSearch(trimmed, { grade: opts.grade || null, limit: 40 });
+
+  // 1-1) 키워드 매칭이 빈약한 주제(예: '월드컵')는 과목별 균형 샘플로
+  //      후보 풀을 보강하여, AI가 넓은 풀에서 직접 선별할 수 있게 한다.
+  //      (보강 없이는 후보 0건 → AI 호출 자체가 불가능했던 문제 해결)
+  if (candidates.length < 12) {
+    const seen = new Set(candidates.map((c) => c.code));
+    for (const s of getBalancedSample(opts.grade || null, 4)) {
+      if (candidates.length >= 48) break;
+      if (!seen.has(s.code)) {
+        seen.add(s.code);
+        candidates.push(s);
+      }
+    }
+  }
 
   // 2) 백엔드 호출
   try {
@@ -338,7 +352,11 @@ function buildLocalFallback(topic, candidates) {
   const picked = [];
   const usedSubjects = new Map();
 
-  for (const c of candidates) {
+  // 균형 샘플로 보강된 후보(_score 없음)는 로컬 폴백에서 제외 —
+  // 폴백은 키워드 근거가 있는 항목만 보여준다 (AI 없이 무관한 추천 방지)
+  const scored = candidates.filter((c) => typeof c._score === 'number' && c._score > 0);
+
+  for (const c of scored) {
     const count = usedSubjects.get(c.subject) || 0;
     if (count >= 2) continue; // 과목당 최대 2건 → 융합(교과 통합) 성격 유지
     picked.push(c);
