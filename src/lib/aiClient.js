@@ -13,9 +13,16 @@
  *   4) 백엔드가 없거나(로컬 미리보기) 오류가 나면, 로컬 점수 기반
  *      폴백 결과를 만들어 UI가 끊기지 않도록 합니다.
  */
-import { localKeywordSearch, getBalancedSample, findByCode, truncate } from './standardsData.js';
+import {
+  localKeywordSearch,
+  scoreByKeywords,
+  getBalancedSample,
+  findByCode,
+  truncate,
+} from './standardsData.js';
 
 const API_ENDPOINT = '/api/recommend-standards';
+const EXPAND_ENDPOINT = '/api/expand-keywords';
 const RUBRIC_ENDPOINT = '/api/generate-rubric';
 const LESSON_ENDPOINT = '/api/generate-lesson';
 const REQUEST_TIMEOUT_MS = 25000;
@@ -59,18 +66,32 @@ export async function recommendStandards(topic, opts = {}) {
   // 1) 후보군 프리필터 (상위 40건)
   let candidates = localKeywordSearch(trimmed, { grade: opts.grade || null, limit: 40 });
 
-  // 1-1) 키워드 매칭이 빈약한 주제(예: '월드컵')는 과목별 균형 샘플로
-  //      후보 풀을 보강하여, AI가 넓은 풀에서 직접 선별할 수 있게 한다.
-  //      (보강 없이는 후보 0건 → AI 호출 자체가 불가능했던 문제 해결)
+  // 1-1) 키워드 매칭이 빈약한 창의적 소재(예: '선관위', '월드컵')는
+  //      AI에게 교과 개념 키워드로 번역을 요청한 뒤 재검색한다.
+  //      (선관위 → 선거, 민주주의, 투표, 시민 … → 6사08-01 등 발견)
   if (candidates.length < 12) {
-    const seen = new Set(candidates.map((c) => c.code));
-    for (const s of getBalancedSample(opts.grade || null, 4)) {
-      if (candidates.length >= 48) break;
-      if (!seen.has(s.code)) {
-        seen.add(s.code);
-        candidates.push(s);
+    try {
+      const expanded = await postJson(
+        EXPAND_ENDPOINT,
+        { topic: trimmed, grade: opts.grade || null },
+        REQUEST_TIMEOUT_MS
+      );
+      if (Array.isArray(expanded.keywords) && expanded.keywords.length > 0) {
+        const rescored = scoreByKeywords(expanded.keywords, {
+          grade: opts.grade || null,
+          limit: 40,
+        });
+        candidates = mergeByCode(candidates, rescored, 48);
       }
+    } catch (err) {
+      console.warn('[백워드 AI] 키워드 확장 실패(무시하고 진행):', err?.message);
     }
+  }
+
+  // 1-2) 그래도 부족하면 과목별 균형 샘플로 최소한의 풀을 확보해
+  //      AI가 넓은 풀에서 직접 선별할 수 있게 한다.
+  if (candidates.length < 12) {
+    candidates = mergeByCode(candidates, getBalancedSample(opts.grade || null, 4), 48);
   }
 
   // 2) 백엔드 호출
@@ -243,6 +264,20 @@ export async function generateLessonPlan({ standards, rubric, topic = '' }) {
     console.warn('[백워드 AI] 과정안 API 호출 실패, 로컬 폴백 사용:', err?.message);
     return buildLocalLessonFallback({ standards, rubric, topic: payload.topic });
   }
+}
+
+/** 코드 기준 중복 제거 병합 (primary 우선, cap까지) */
+function mergeByCode(primary, extra, cap) {
+  const seen = new Set(primary.map((c) => c.code));
+  const merged = [...primary];
+  for (const s of extra) {
+    if (merged.length >= cap) break;
+    if (!seen.has(s.code)) {
+      seen.add(s.code);
+      merged.push(s);
+    }
+  }
+  return merged;
 }
 
 /** flow/assessmentPlan 행에 클라이언트용 id 부여 */

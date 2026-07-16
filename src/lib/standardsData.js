@@ -130,12 +130,19 @@ export function expandTopicKeywords(topic) {
 }
 
 /**
- * 로컬 점수 기반 검색
+ * 로컬 점수 기반 검색 (주제어 → 자동 키워드 확장)
  * @returns 점수 내림차순 상위 limit건 [{ ...standard, _score }]
  */
-export function localKeywordSearch(topic, { grade = null, limit = 40 } = {}) {
-  const keywords = expandTopicKeywords(topic);
-  if (keywords.length === 0) return [];
+export function localKeywordSearch(topic, opts = {}) {
+  return scoreByKeywords(expandTopicKeywords(topic), opts);
+}
+
+/**
+ * 키워드 목록으로 직접 점수 검색
+ * AI 키워드 확장(/api/expand-keywords) 결과를 그대로 넣을 수 있습니다.
+ */
+export function scoreByKeywords(keywords, { grade = null, limit = 40 } = {}) {
+  if (!Array.isArray(keywords) || keywords.length === 0) return [];
 
   const scored = [];
   for (const s of STANDARDS) {
