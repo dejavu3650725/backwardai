@@ -1,0 +1,26 @@
+{
+  "name": "backward-ai",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "백워드 AI — 2022 개정 교육과정 기반 과정 중심 평가 도우미",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "vercel-dev": "vercel dev"
+  },
+  "dependencies": {
+    "firebase": "^10.12.2",
+    "lucide-react": "^0.408.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "vite": "^5.3.4"
+  }
+}

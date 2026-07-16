@@ -1,0 +1,132 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-slate-50 text-slate-800 font-sans;
+  }
+  ::selection {
+    @apply bg-emerald-200/60;
+  }
+}
+
+@layer components {
+  /* 흰색 카드 레이아웃 공통 스타일 */
+  .card {
+    @apply bg-white rounded-2xl border border-slate-200/80 shadow-card;
+  }
+
+  /* AI 추천 결과 카드 — 은은한 그라데이션 테두리 */
+  .gradient-border {
+    @apply rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-300/80 via-sky-300/80 to-indigo-300/80;
+  }
+
+  /* 스켈레톤 로딩 */
+  .skeleton {
+    @apply rounded-lg bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 bg-[length:200%_100%] animate-shimmer;
+  }
+
+  /* 공통 select 스타일 */
+  .select-base {
+    @apply w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm
+      text-slate-700 shadow-sm transition-colors
+      focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-100
+      disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-3
+      text-sm font-semibold text-white shadow-sm transition-all
+      hover:bg-emerald-600 hover:shadow-card-hover
+      focus:outline-none focus:ring-4 focus:ring-emerald-200
+      disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white
+      px-5 py-3 text-sm font-semibold text-slate-600 transition-colors
+      hover:bg-slate-50 hover:text-slate-800
+      focus:outline-none focus:ring-4 focus:ring-slate-100
+      disabled:cursor-not-allowed disabled:text-slate-300;
+  }
+}
+
+/* ==================================================================
+ * 인쇄 스타일 — [인쇄하기] 클릭 시 A4 결재 문서 레이아웃
+ * ================================================================== */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
+  /* 헤더/푸터/컨트롤 등 화면 전용 요소 숨김 */
+  .no-print {
+    display: none !important;
+  }
+
+  /* 문서 영역: 카드 그림자 제거, 얇은 실선 테두리의 결재 문서 형태로 */
+  .print-area {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-area .card {
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+    break-inside: avoid-page;
+  }
+
+  .print-area table {
+    font-size: 9.5pt;
+    min-width: 0 !important; /* 화면용 min-width 해제 → A4 폭에 맞춤 */
+  }
+
+  .print-area tr {
+    break-inside: avoid;
+  }
+
+  .print-area th,
+  .print-area td {
+    border-color: #cbd5e1 !important;
+  }
+
+  /* 가로 스크롤 래퍼 해제 */
+  .print-area .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  /* 인라인 에디팅 힌트(연필/호버) 제거 */
+  .print-area [role='button'] {
+    cursor: default;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
