@@ -35,7 +35,9 @@ export async function runPrompt(prompt, opts = {}) {
 
 /* ── Gemini (REST) ─────────────────────────────────────────────── */
 export async function callGemini(apiKey, prompt, { maxTokens = 1500, temperature = 0.4 } = {}) {
-  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  // 기본 모델: gemini-3.5-flash (2026년 기준 현행 텍스트 모델)
+  // 이전 세대(1.5/2.0 flash)는 서비스 종료되어 404를 반환합니다.
+  const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const response = await fetch(url, {
