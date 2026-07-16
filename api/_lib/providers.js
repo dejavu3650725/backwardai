@@ -55,48 +55,45 @@ export async function listGeminiModels(apiKey) {
     .filter(Boolean);
 }
 
-/**
- * 사용할 Gemini 모델 자동 선택
- * - GEMINI_MODEL 환경변수가 있으면 그것을 최우선 사용
- * - 없으면 키로 실제 사용 가능한 모델 목록을 조회해 flash 계열 중
- *   최신 버전을 선택 (모델명 하드코딩으로 인한 404를 원천 차단)
- */
-export async function pickGeminiModel(apiKey) {
-  if (process.env.GEMINI_MODEL) return process.env.GEMINI_MODEL;
-  if (cachedGeminiModel) return cachedGeminiModel;
+/** 시도할 모델 우선순위 (2026년 기준 현행 → 구형 순) */
+const PREFERRED_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-2.5-flash',
+  'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+];
 
-  const models = await listGeminiModels(apiKey);
-  const preferred = [
-    'gemini-3.5-flash',
-    'gemini-3-flash',
-    'gemini-2.5-flash',
-    'gemini-3.1-flash-lite',
-    'gemini-2.5-flash-lite',
-    'gemini-2.0-flash',
-  ];
-  let chosen = preferred.find((p) => models.includes(p));
-  if (!chosen) {
-    // 선호 목록에 없으면: 특수 모델(이미지/오디오 등)을 제외한
-    // flash 계열 중 이름 정렬상 최신 버전을 선택
-    chosen = models
-      .filter(
-        (n) =>
-          n.includes('flash') &&
-          !/image|audio|live|tts|embedding|preview/.test(n)
-      )
-      .sort()
-      .reverse()[0] || models.find((n) => !/embedding/.test(n));
+/**
+ * 모델 후보 목록 구성
+ * - GEMINI_MODEL 환경변수 → 성공 캐시 → (가능하면) 목록 조회 결과 → 정적 우선순위
+ * - ⚠️ 신형 AQ. 키는 ListModels를 거부(401)하는 경우가 있으므로,
+ *   목록 조회는 '실패해도 무시하는' 선택 단계다. 절대 여기서 죽지 않는다.
+ */
+export async function buildGeminiCandidates(apiKey) {
+  const candidates = [];
+  if (process.env.GEMINI_MODEL) candidates.push(process.env.GEMINI_MODEL);
+  if (cachedGeminiModel) candidates.push(cachedGeminiModel);
+
+  try {
+    const models = await listGeminiModels(apiKey);
+    const discovered =
+      PREFERRED_MODELS.find((p) => models.includes(p)) ||
+      models
+        .filter((n) => n.includes('flash') && !/image|audio|live|tts|embedding/.test(n))
+        .sort()
+        .reverse()[0];
+    if (discovered) candidates.push(discovered);
+  } catch {
+    // ListModels 미지원 키(AQ. 등) → 정적 우선순위로 진행
   }
-  if (!chosen) {
-    throw new Error('이 API 키로 사용 가능한 Gemini 생성 모델이 없습니다.');
-  }
-  cachedGeminiModel = chosen;
-  return chosen;
+
+  candidates.push(...PREFERRED_MODELS);
+  return [...new Set(candidates)];
 }
 
 export async function callGemini(apiKey, prompt, { maxTokens = 1500, temperature = 0.4 } = {}) {
-  const model = await pickGeminiModel(apiKey);
-
   const doCall = async (modelName) => {
     // 인증은 x-goog-api-key 헤더 사용 (신형 AQ. 키 포함 공식 권장 방식)
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
@@ -114,26 +111,32 @@ export async function callGemini(apiKey, prompt, { maxTokens = 1500, temperature
     });
   };
 
-  let response = await doCall(model);
+  const candidates = await buildGeminiCandidates(apiKey);
+  let lastError = null;
 
-  // 모델이 그 사이 종료된 경우(404) 캐시를 비우고 한 번 재탐색
-  if (response.status === 404 && !process.env.GEMINI_MODEL) {
-    cachedGeminiModel = null;
-    const retryModel = await pickGeminiModel(apiKey);
-    if (retryModel !== model) response = await doCall(retryModel);
-  }
+  for (const model of candidates) {
+    const response = await doCall(model);
 
-  if (!response.ok) {
+    if (response.ok) {
+      cachedGeminiModel = model; // 성공한 모델을 기억해 다음 호출부터 바로 사용
+      const data = await response.json();
+      const text = data?.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text || '')
+        .join('');
+      if (!text) throw new Error(`Gemini(${model}) 응답에 텍스트가 없습니다.`);
+      return text;
+    }
+
     const body = await response.text();
-    throw new Error(`Gemini API ${response.status}: ${body.slice(0, 200)}`);
+    lastError = `Gemini API ${response.status} (모델: ${model}): ${body.slice(0, 200)}`;
+
+    // 404(존재하지 않는 모델)만 다음 후보로 넘어가고,
+    // 401/403 등 인증·권한 오류는 모델을 바꿔도 소용없으므로 즉시 중단
+    if (response.status !== 404) break;
+    if (cachedGeminiModel === model) cachedGeminiModel = null;
   }
 
-  const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts
-    ?.map((p) => p.text || '')
-    .join('');
-  if (!text) throw new Error('Gemini 응답에 텍스트가 없습니다.');
-  return text;
+  throw new Error(lastError || '사용 가능한 Gemini 모델을 찾지 못했습니다.');
 }
 
 /* ── Claude (REST) ─────────────────────────────────────────────── */

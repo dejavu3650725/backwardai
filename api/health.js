@@ -6,17 +6,12 @@
  * 브라우저에서 https://<도메인>/api/health 를 열면 AI 연결 상태를
  * JSON으로 보여줍니다. 키 값 자체는 절대 노출하지 않습니다.
  *
- * 응답 예:
- * {
- *   "ok": true,
- *   "provider": "gemini",
- *   "geminiKeySet": true,
- *   "keyPrefix": "AQ.A",
- *   "model": "gemini-3.5-flash",
- *   "sample": "{\"status\":\"ok\"}"
- * }
+ * 진단 항목:
+ *  - listModels : 모델 목록 조회 가능 여부 (신형 AQ. 키는 실패할 수
+ *                 있으며, 실패해도 본 호출에는 지장 없음 — 참고용)
+ *  - ok/sample  : 실제 generateContent 호출 성공 여부 (이게 핵심)
  */
-import { pickProvider, pickGeminiModel, runPrompt } from './_lib/providers.js';
+import { pickProvider, listGeminiModels, runPrompt } from './_lib/providers.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -42,10 +37,19 @@ export default async function handler(req, res) {
     });
   }
 
-  try {
-    if (out.provider === 'gemini') {
-      out.model = await pickGeminiModel(geminiKey);
+  // 1) 모델 목록 조회 (참고용 — 실패해도 계속 진행)
+  if (out.provider === 'gemini') {
+    try {
+      const models = await listGeminiModels(geminiKey);
+      out.listModels = `성공 (${models.length}개)`;
+      out.flashModels = models.filter((m) => m.includes('flash')).slice(0, 6);
+    } catch (err) {
+      out.listModels = `실패(참고용, 본 호출과 무관): ${String(err?.message || err).slice(0, 200)}`;
     }
+  }
+
+  // 2) 실제 생성 호출 테스트 (핵심 진단)
+  try {
     const text = await runPrompt(
       '아무 설명 없이 정확히 다음 JSON만 출력하세요: {"status":"ok"}',
       { maxTokens: 200, temperature: 0 }
