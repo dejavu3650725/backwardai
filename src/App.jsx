@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 
 import Stepper from './components/Stepper.jsx';
+import Footer from './components/Footer.jsx';
 import StandardsSelector from './components/StandardsSelector.jsx';
 import RubricGenerator from './components/steps/RubricGenerator.jsx';
 import LessonPlanGenerator from './components/steps/LessonPlanGenerator.jsx';
@@ -182,6 +183,9 @@ export default function App() {
       {/* ── 본문 (현재 단계 화면) ───────────────────────────── */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8 print:max-w-none print:p-0">
         {renderStep()}
+
+        {/* ── 이용약관 · 개인정보처리방침 푸터 (인쇄 시 숨김) ── */}
+        <Footer />
       </main>
 
       {/* ── 하단 내비게이션 바 (인쇄 시 숨김) ───────────────── */}
