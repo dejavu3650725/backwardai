@@ -9,7 +9,18 @@
  */
 import { auth, db, googleProvider, isFirebaseConfigured } from '../firebase.js';
 import { signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  getDocs,
+  addDoc,
+  deleteDoc,
+  collection,
+  query,
+  orderBy,
+  serverTimestamp,
+} from 'firebase/firestore';
 
 /** 로그인 기능 사용 가능 여부 */
 export function authReady() {
@@ -45,6 +56,86 @@ export async function saveWorkspace(uid, data) {
     { ...clean, updatedAt: serverTimestamp() },
     { merge: true }
   );
+}
+
+/* ==================================================================
+ * 다중 수업(프로젝트) 관리 — users/{uid}/projects/{projectId}
+ *   { title, selectedStandards, rubric, lessonPlan, currentStep,
+ *     createdAt, updatedAt }
+ * ================================================================== */
+
+/** 내 수업 목록 (최근 수정순) */
+export async function listProjects(uid) {
+  const qs = await getDocs(
+    query(collection(db, 'users', uid, 'projects'), orderBy('updatedAt', 'desc'))
+  );
+  return qs.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/** 새 수업 만들기 → 프로젝트 id 반환 */
+export async function createProject(uid, data = {}) {
+  const clean = JSON.parse(JSON.stringify(data ?? {}));
+  const ref = await addDoc(collection(db, 'users', uid, 'projects'), {
+    title: '새 수업',
+    selectedStandards: [],
+    rubric: null,
+    lessonPlan: null,
+    currentStep: 0,
+    ...clean,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function loadProject(uid, projectId) {
+  const snap = await getDoc(doc(db, 'users', uid, 'projects', projectId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export async function saveProject(uid, projectId, data) {
+  const clean = JSON.parse(JSON.stringify(data ?? {}));
+  await setDoc(
+    doc(db, 'users', uid, 'projects', projectId),
+    { ...clean, updatedAt: serverTimestamp() },
+    { merge: true }
+  );
+}
+
+export async function deleteProjectDoc(uid, projectId) {
+  await deleteDoc(doc(db, 'users', uid, 'projects', projectId));
+}
+
+/** 마지막으로 열었던 수업 기억 (브라우저별) */
+export function rememberLastProject(uid, projectId) {
+  try {
+    localStorage.setItem(`bw_last_project_${uid}`, projectId);
+  } catch {
+    /* 무시 */
+  }
+}
+export function recallLastProject(uid) {
+  try {
+    return localStorage.getItem(`bw_last_project_${uid}`);
+  } catch {
+    return null;
+  }
+}
+
+/** 로그인 안내 알림창 표시 여부 (닫으면 다시 안 띄움) */
+export function welcomeDismissed() {
+  try {
+    return localStorage.getItem('bw_welcome_dismissed') === '1';
+  } catch {
+    return false;
+  }
+}
+export function dismissWelcome() {
+  try {
+    localStorage.setItem('bw_welcome_dismissed', '1');
+  } catch {
+    /* 무시 */
+  }
 }
 
 /** 로그인 오류를 교사 친화적 메시지로 변환 */

@@ -31,9 +31,19 @@ import {
   signInWithGoogle,
   signOutUser,
   loadWorkspace,
-  saveWorkspace,
+  listProjects,
+  createProject,
+  loadProject,
+  saveProject,
+  deleteProjectDoc,
+  rememberLastProject,
+  recallLastProject,
+  welcomeDismissed,
+  dismissWelcome,
   friendlyAuthError,
 } from './lib/workspaceStore.js';
+import { ProjectsModal, WelcomeNotice } from './components/ProjectsModal.jsx';
+import EditableCell from './components/EditableCell.jsx';
 
 import Stepper from './components/Stepper.jsx';
 import Footer from './components/Footer.jsx';
@@ -81,34 +91,85 @@ export default function App() {
    */
   const [lessonPlan, setLessonPlan] = useState(null);
 
-  /* ── 구글 로그인 + 작업 자동 저장 ─────────────────────── */
+  /* ── 구글 로그인 + 다중 수업(프로젝트) 자동 저장 ────────── */
   const [user, setUser] = useState(null);
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false); // 복원 완료 후에만 자동 저장
   const [saveState, setSaveState] = useState('idle'); // idle | saving | saved
   const [authError, setAuthError] = useState('');
+  const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [currentProjectId, setCurrentProjectId] = useState(null);
+  const [projectTitle, setProjectTitle] = useState('새 수업');
+  const [showProjects, setShowProjects] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const saveTimer = useRef(null);
 
   /** 로그인 상태 구독 */
   useEffect(() => {
     return watchAuth((u) => {
       setUser(u);
-      if (!u) setWorkspaceLoaded(false);
+      if (!u) {
+        setWorkspaceLoaded(false);
+        setCurrentProjectId(null);
+        setProjects([]);
+      }
     });
   }, []);
 
-  /** 로그인 시 저장된 작업 복원 (현재 작업이 비어 있을 때만) */
+  /** 접속 화면 로그인 안내 알림창 (미로그인 + 닫은 적 없음) */
+  useEffect(() => {
+    if (authReady() && !user && !welcomeDismissed()) setShowWelcome(true);
+    if (user) setShowWelcome(false);
+  }, [user]);
+
+  /** 수업 데이터를 화면 상태에 적용 */
+  const applyProject = useCallback((p) => {
+    setProjectTitle(p?.title || '새 수업');
+    setSelectedStandards(p?.selectedStandards || []);
+    setRubric(p?.rubric || null);
+    setLessonPlan(p?.lessonPlan || null);
+    setCurrentStep(Math.min(p?.currentStep || 0, STEPS.length - 1));
+  }, []);
+
+  const refreshProjects = useCallback(async () => {
+    if (!user) return [];
+    setProjectsLoading(true);
+    try {
+      const list = await listProjects(user.uid);
+      setProjects(list);
+      return list;
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, [user]);
+
+  /** 로그인 시: 수업 목록 로드 → 마지막 수업(또는 최신) 복원 */
   useEffect(() => {
     if (!user || workspaceLoaded) return;
     (async () => {
       try {
-        const saved = await loadWorkspace(user.uid);
-        const isEmpty =
-          selectedStandards.length === 0 && !rubric && !lessonPlan && currentStep === 0;
-        if (saved && isEmpty) {
-          setSelectedStandards(saved.selectedStandards || []);
-          setRubric(saved.rubric || null);
-          setLessonPlan(saved.lessonPlan || null);
-          setCurrentStep(Math.min(saved.currentStep || 0, STEPS.length - 1));
+        let list = await refreshProjects();
+
+        // 첫 사용: 예전 단일 저장본이 있으면 첫 수업으로 이전, 없으면 새 수업 생성
+        if (list.length === 0) {
+          const legacy = await loadWorkspace(user.uid).catch(() => null);
+          await createProject(user.uid, {
+            title: legacy?.rubric?.title?.slice(0, 40) || '내 첫 수업',
+            selectedStandards: legacy?.selectedStandards || [],
+            rubric: legacy?.rubric || null,
+            lessonPlan: legacy?.lessonPlan || null,
+            currentStep: legacy?.currentStep || 0,
+          });
+          list = await refreshProjects();
+        }
+
+        const lastId = recallLastProject(user.uid);
+        const target = list.find((p) => p.id === lastId) || list[0];
+        if (target) {
+          const full = await loadProject(user.uid, target.id);
+          setCurrentProjectId(target.id);
+          applyProject(full);
+          rememberLastProject(user.uid, target.id);
         }
       } catch (err) {
         console.warn('작업 복원 실패:', err?.message);
@@ -119,14 +180,20 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, workspaceLoaded]);
 
-  /** 작업 내용 변경 시 1.5초 뒤 자동 저장 (디바운스) */
+  /** 작업 내용 변경 시 1.5초 뒤 현재 수업에 자동 저장 (디바운스) */
   useEffect(() => {
-    if (!user || !workspaceLoaded) return undefined;
+    if (!user || !workspaceLoaded || !currentProjectId) return undefined;
     clearTimeout(saveTimer.current);
     setSaveState('saving');
     saveTimer.current = setTimeout(async () => {
       try {
-        await saveWorkspace(user.uid, { selectedStandards, rubric, lessonPlan, currentStep });
+        await saveProject(user.uid, currentProjectId, {
+          title: projectTitle,
+          selectedStandards,
+          rubric,
+          lessonPlan,
+          currentStep,
+        });
         setSaveState('saved');
       } catch (err) {
         console.warn('자동 저장 실패:', err?.message);
@@ -135,10 +202,55 @@ export default function App() {
     }, 1500);
     return () => clearTimeout(saveTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, workspaceLoaded, selectedStandards, rubric, lessonPlan, currentStep]);
+  }, [user, workspaceLoaded, currentProjectId, projectTitle, selectedStandards, rubric, lessonPlan, currentStep]);
+
+  /** 다른 수업 열기 */
+  const handleOpenProject = useCallback(
+    async (projectId) => {
+      const full = await loadProject(user.uid, projectId);
+      if (!full) return;
+      setCurrentProjectId(projectId);
+      applyProject(full);
+      rememberLastProject(user.uid, projectId);
+      setShowProjects(false);
+      window.scrollTo({ top: 0 });
+    },
+    [user, applyProject]
+  );
+
+  /** 새 수업 만들기 */
+  const handleCreateProject = useCallback(async () => {
+    const pid = await createProject(user.uid, {
+      title: `새 수업 (${new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })})`,
+    });
+    setCurrentProjectId(pid);
+    applyProject(null);
+    setProjectTitle(`새 수업 (${new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })})`);
+    rememberLastProject(user.uid, pid);
+    await refreshProjects();
+    setShowProjects(false);
+    window.scrollTo({ top: 0 });
+  }, [user, applyProject, refreshProjects]);
+
+  /** 수업 삭제 */
+  const handleDeleteProject = useCallback(
+    async (projectId) => {
+      await deleteProjectDoc(user.uid, projectId);
+      const list = await refreshProjects();
+      if (projectId === currentProjectId) {
+        if (list.length > 0) {
+          await handleOpenProject(list[0].id);
+        } else {
+          await handleCreateProject();
+        }
+      }
+    },
+    [user, currentProjectId, refreshProjects, handleOpenProject, handleCreateProject]
+  );
 
   const handleLogin = useCallback(async () => {
     setAuthError('');
+    setShowWelcome(false);
     try {
       await signInWithGoogle();
     } catch (err) {
@@ -333,6 +445,30 @@ export default function App() {
             </p>
           )}
 
+          {/* ── 현재 수업 표시줄 (로그인 시) ─────────────────── */}
+          {user && workspaceLoaded && (
+            <div className="flex items-center gap-2 pb-2">
+              <span className="text-xs text-slate-400">📚</span>
+              <div className="min-w-0 max-w-[50%] text-sm font-bold text-slate-700">
+                <EditableCell
+                  value={projectTitle}
+                  onChange={setProjectTitle}
+                  placeholder="수업 이름"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  refreshProjects();
+                  setShowProjects(true);
+                }}
+                className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200 transition-colors hover:bg-emerald-50 hover:text-emerald-600 hover:ring-emerald-200"
+              >
+                내 수업 목록 ({projects.length})
+              </button>
+            </div>
+          )}
+
           {/* ── 가로형 Stepper ─────────────────────────────── */}
           <div className="pb-4 pt-1">
             <Stepper steps={STEPS} currentStep={currentStep} onStepClick={jumpToStep} />
@@ -378,6 +514,28 @@ export default function App() {
           </button>
         </div>
       </footer>
+
+      {/* ── 모달: 로그인 안내 / 내 수업 목록 ─────────────────── */}
+      {showWelcome && (
+        <WelcomeNotice
+          onLogin={handleLogin}
+          onDismiss={() => {
+            dismissWelcome();
+            setShowWelcome(false);
+          }}
+        />
+      )}
+      {showProjects && user && (
+        <ProjectsModal
+          projects={projects}
+          currentProjectId={currentProjectId}
+          loading={projectsLoading}
+          onOpen={handleOpenProject}
+          onCreate={handleCreateProject}
+          onDelete={handleDeleteProject}
+          onClose={() => setShowProjects(false)}
+        />
+      )}
     </div>
   );
 }
