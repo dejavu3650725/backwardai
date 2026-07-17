@@ -62,7 +62,7 @@
 @media print {
   @page {
     size: A4;
-    margin: 12mm;
+    margin: 10mm;
   }
 
   html,
@@ -79,27 +79,69 @@
   .print-area {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    font-size: 9pt;
+  }
+
+  /* 카드 사이 간격 압축 */
+  .print-area.space-y-6 > * + * {
+    margin-top: 8px !important;
   }
 
   .print-area .card {
     border: 1px solid #cbd5e1 !important;
-    border-radius: 6px !important;
+    border-radius: 4px !important;
     box-shadow: none !important;
-    break-inside: avoid-page;
   }
 
+  /* 문서 제목 블록 압축 */
+  .print-area .card:first-child {
+    padding: 8px 12px !important;
+  }
+  .print-area .card:first-child .text-xl {
+    font-size: 13pt !important;
+  }
+
+  /* 섹션 제목 압축 */
+  .print-area h3,
+  .print-area h4 {
+    padding: 4px 10px !important;
+    font-size: 9.5pt !important;
+  }
+
+  /* 표: A4 폭에 맞춰 압축, 내용 위주 가독성 */
   .print-area table {
-    font-size: 9.5pt;
+    font-size: 8pt !important;
     min-width: 0 !important; /* 화면용 min-width 해제 → A4 폭에 맞춤 */
-  }
-
-  .print-area tr {
-    break-inside: avoid;
+    width: 100% !important;
+    table-layout: fixed;
   }
 
   .print-area th,
   .print-area td {
     border-color: #cbd5e1 !important;
+    padding: 3px 5px !important;
+    line-height: 1.45 !important;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  .print-area td .text-xs,
+  .print-area td .text-sm,
+  .print-area th {
+    font-size: 8pt !important;
+  }
+
+  /* 큰 표(과정안)는 페이지에 걸쳐 흐르되, 행 단위로는 자르지 않음 */
+  .print-area tr {
+    break-inside: avoid;
+  }
+  .print-area thead {
+    display: table-header-group; /* 다음 페이지에도 표 헤더 반복 */
+  }
+
+  /* [2. 교수·학습 과정안]은 새 페이지에서 시작 → 섹션별 한 화면 구성 */
+  .print-area .print-page-break {
+    break-before: page;
   }
 
   /* 가로 스크롤 래퍼 해제 */
@@ -110,6 +152,9 @@
   /* 인라인 에디팅 힌트(연필/호버) 제거 */
   .print-area [role='button'] {
     cursor: default;
+  }
+  .print-area [role='button']:hover {
+    background: transparent !important;
   }
 }
 

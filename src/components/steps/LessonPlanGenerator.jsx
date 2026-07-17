@@ -435,8 +435,8 @@ export default function LessonPlanGenerator({
             </div>
           </div>
 
-          {/* ── [2] 교수·학습 과정안 ───────────────────────────── */}
-          <div className="card overflow-hidden">
+          {/* ── [2] 교수·학습 과정안 (인쇄 시 새 페이지에서 시작) ── */}
+          <div className="card print-page-break overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 bg-sky-50/80 px-5 py-3 sm:px-6">
               <h3 className="text-sm font-extrabold text-sky-700">2. 교수·학습 과정안</h3>
               <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-sky-600 ring-1 ring-sky-100">

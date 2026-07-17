@@ -18,7 +18,13 @@
  *   }]
  * }
  */
-import { runPrompt, extractJson, asString, validateStandards } from './_lib/providers.js';
+import {
+  runPrompt,
+  extractJson,
+  asString,
+  validateStandards,
+  normalizeCode,
+} from './_lib/providers.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -39,12 +45,13 @@ export default async function handler(req, res) {
     const raw = await runPrompt(prompt, { maxTokens: 6000, temperature: 0.4 });
     const parsed = extractJson(raw);
 
-    const allowedCodes = new Set(safeStandards.map((s) => s.code));
+    // 정규화 대조: AI가 "[코드]" 형태로 반환해도 원본 코드로 매칭
+    const canonicalByNorm = new Map(safeStandards.map((s) => [normalizeCode(s.code), s.code]));
     const items = (Array.isArray(parsed.items) ? parsed.items : [])
-      .filter((it) => it && allowedCodes.has(it.code))
+      .filter((it) => it && canonicalByNorm.has(normalizeCode(it.code)))
       .slice(0, 10)
       .map((it) => ({
-        code: it.code,
+        code: canonicalByNorm.get(normalizeCode(it.code)),
         element: asString(it.element, 120),
         method: asString(it.method, 40),
         levels: {
@@ -86,7 +93,7 @@ function buildPrompt({ topic, standards }) {
 ${standardLines}
 
 ## 설계 지침
-1. 성취기준마다 1개의 평가 요소를 도출하세요. (성취기준 코드를 반드시 함께 표기)
+1. 성취기준마다 1개의 평가 요소를 도출하세요. (code에는 성취기준 코드를 대괄호 없이 그대로 표기. 예: "6실04-05")
 2. 평가 방법은 초등 과정 중심 평가에 적합한 것을 고르세요. (관찰평가, 구술평가, 서술평가, 실기평가, 포트폴리오, 자기평가, 동료평가 중)
 3. 성취수준은 상/중/하 3단계로, 학생의 수행 모습이 눈에 그려지도록 구체적 행동 동사로 기술하세요.
    - '상'은 단순히 '~를 매우 잘한다'가 아니라 질적으로 구별되는 수행 특성을 담을 것

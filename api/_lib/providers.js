@@ -208,6 +208,15 @@ export function asString(value, maxLength = 2000) {
   return typeof value === 'string' ? value.slice(0, maxLength) : '';
 }
 
+/**
+ * 성취기준 코드 정규화 — AI가 "[6실04-05]"처럼 대괄호/공백을 붙여
+ * 반환해도 "6실04-05"와 같은 코드로 인식되도록 한다.
+ * (환각 방지용 화이트리스트 대조가 형식 차이로 오탐하는 것을 방지)
+ */
+export function normalizeCode(code) {
+  return String(code || '').replace(/[\[\]\s]/g, '');
+}
+
 /** 성취기준 배열 입력 검증 — [{code, subject, description, ...}] */
 export function validateStandards(standards, { min = 1, max = 12 } = {}) {
   if (!Array.isArray(standards)) return null;

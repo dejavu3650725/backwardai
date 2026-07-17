@@ -25,6 +25,7 @@ const API_ENDPOINT = '/api/recommend-standards';
 const EXPAND_ENDPOINT = '/api/expand-keywords';
 const RUBRIC_ENDPOINT = '/api/generate-rubric';
 const LESSON_ENDPOINT = '/api/generate-lesson';
+const EVALUATE_ENDPOINT = '/api/evaluate-answer';
 const REQUEST_TIMEOUT_MS = 25000;
 const LONG_REQUEST_TIMEOUT_MS = 55000;
 
@@ -365,6 +366,53 @@ function buildLocalLessonFallback({ standards, rubric, topic }) {
   };
 
   return withRowIds(plan);
+}
+
+/* ==================================================================
+ * Phase 4 — 학생 답안 AI 평가·피드백
+ * ================================================================== */
+
+const LEVEL_KO = { high: '상', mid: '중', low: '하' };
+
+/**
+ * 학생 제출 답안을 루브릭 기준으로 AI 평가
+ * @param {object} params { studentName, questions, answers }
+ * @returns {Promise<{ source, items:[{qid,level,feedback,reason}], overall }>}
+ */
+export async function evaluateSubmission({ studentName, questions, answers }) {
+  try {
+    const data = await postJson(
+      EVALUATE_ENDPOINT,
+      { studentName, questions, answers },
+      LONG_REQUEST_TIMEOUT_MS
+    );
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      throw new Error('평가 응답이 비어 있습니다.');
+    }
+    return { source: 'ai', ...data };
+  } catch (err) {
+    console.warn('[백워드 AI] AI 평가 호출 실패, 로컬 초안 사용:', err?.message);
+    return buildLocalEvaluationFallback({ studentName, questions, answers });
+  }
+}
+
+/** AI 미연결 시: 자기평가 선택 수준을 반영한 임시 초안 (교사 직접 판정 필요) */
+function buildLocalEvaluationFallback({ studentName, questions, answers }) {
+  const answerByQid = new Map(answers.map((a) => [a.qid, a]));
+  return {
+    source: 'local-fallback',
+    items: questions.map((q) => {
+      const a = answerByQid.get(q.qid);
+      const level = a?.level && LEVEL_KO[a.level] ? a.level : 'mid';
+      return {
+        qid: q.qid,
+        level,
+        feedback: `${studentName} 님, '${q.element}' 활동에 성실하게 참여해 주었어요. 답변에 담긴 생각을 선생님과 함께 이야기 나누며 더 발전시켜 보아요.`,
+        reason: 'AI 서버 미연결 — 교사의 직접 판정이 필요한 임시 초안입니다.',
+      };
+    }),
+    overall: 'AI 서버 미연결 상태로 생성된 임시 초안입니다. 수준과 피드백을 직접 확인해 주세요.',
+  };
 }
 
 /* ==================================================================

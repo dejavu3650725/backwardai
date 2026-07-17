@@ -10,7 +10,7 @@
  *
  * 응답: { theme: string, summary: string, items: [{ code, reason }] }
  */
-import { runPrompt, extractJson, asString } from './_lib/providers.js';
+import { runPrompt, extractJson, asString, normalizeCode } from './_lib/providers.js';
 
 const MAX_CANDIDATES = 60;
 const MAX_TOPIC_LENGTH = 200;
@@ -54,11 +54,15 @@ export default async function handler(req, res) {
     const parsed = extractJson(raw);
 
     // 출력 검증: 후보에 없는 코드는 제거(환각 방지)
-    const allowedCodes = new Set(safeCandidates.map((c) => c.code));
+    // — 정규화 대조로 "[코드]" 등 형식 차이는 허용
+    const canonicalByNorm = new Map(safeCandidates.map((c) => [normalizeCode(c.code), c.code]));
     const items = (Array.isArray(parsed.items) ? parsed.items : [])
-      .filter((it) => it && allowedCodes.has(it.code))
+      .filter((it) => it && canonicalByNorm.has(normalizeCode(it.code)))
       .slice(0, 6)
-      .map((it) => ({ code: it.code, reason: asString(it.reason, 300) }));
+      .map((it) => ({
+        code: canonicalByNorm.get(normalizeCode(it.code)),
+        reason: asString(it.reason, 300),
+      }));
 
     if (items.length === 0) {
       return res.status(502).json({ error: 'AI가 유효한 성취기준을 선택하지 못했습니다.' });

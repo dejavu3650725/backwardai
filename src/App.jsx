@@ -23,6 +23,7 @@ import {
 
 import Stepper from './components/Stepper.jsx';
 import Footer from './components/Footer.jsx';
+import StudentAssessment from './components/StudentAssessment.jsx';
 import StandardsSelector from './components/StandardsSelector.jsx';
 import RubricGenerator from './components/steps/RubricGenerator.jsx';
 import LessonPlanGenerator from './components/steps/LessonPlanGenerator.jsx';
@@ -39,6 +40,15 @@ const STEPS = [
 ];
 
 export default function App() {
+  /**
+   * 학생 참여 라우팅 — ?code=ABC123 으로 접속하면 교사용 화면 대신
+   * 학생 평가 페이지를 렌더링합니다. (교사가 공유한 링크/QR)
+   */
+  const studentCode = useMemo(() => {
+    const raw = new URLSearchParams(window.location.search).get('code');
+    return raw ? raw.trim().toUpperCase() : null;
+  }, []);
+
   /** 현재 단계 인덱스 (0 ~ 4) */
   const [currentStep, setCurrentStep] = useState(0);
 
@@ -136,13 +146,18 @@ export default function App() {
           />
         );
       case 'assessment':
-        return <AssessmentFeedback selectedStandards={selectedStandards} />;
+        return <AssessmentFeedback rubric={rubric} />;
       case 'record':
         return <RecordLinker selectedStandards={selectedStandards} />;
       default:
         return null;
     }
   };
+
+  /* 학생 모드: 참여 코드로 접속한 경우 */
+  if (studentCode) {
+    return <StudentAssessment code={studentCode} />;
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
