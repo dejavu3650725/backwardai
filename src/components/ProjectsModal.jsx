@@ -184,14 +184,20 @@ export function WelcomeNotice({ onLogin, onDismiss }) {
           <p className="text-sm leading-relaxed text-slate-600">
             <b className="text-slate-800">구글 계정으로 로그인</b>하면 이런 것들이 가능해져요:
           </p>
-          <ul className="mt-3 space-y-2.5">
-            <li className="flex items-start gap-2.5 text-sm text-slate-600">
+          <ul className="mt-3 space-y-3">
+            <li className="flex items-start gap-3">
               <CloudUpload className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" aria-hidden="true" />
-              성취기준·루브릭·수업 과정안 등 <b>모든 작업 내용이 자동 저장</b>됩니다
+              <span className="text-sm leading-relaxed text-slate-600">
+                성취기준, 루브릭, 수업 과정안 등{' '}
+                <b className="text-slate-800">모든 작업 내용이 자동 저장</b>돼요.
+              </span>
             </li>
-            <li className="flex items-start gap-2.5 text-sm text-slate-600">
+            <li className="flex items-start gap-3">
               <Layers className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" aria-hidden="true" />
-              <b>여러 개의 수업을 만들고</b> 각각의 진행 상황을 이어서 작업할 수 있습니다
+              <span className="text-sm leading-relaxed text-slate-600">
+                <b className="text-slate-800">여러 개의 수업을 만들고</b>, 수업마다 진행 상황을
+                이어서 작업할 수 있어요.
+              </span>
             </li>
           </ul>
           <div className="mt-5 flex flex-col gap-2">
