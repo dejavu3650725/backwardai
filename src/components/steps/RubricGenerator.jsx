@@ -171,10 +171,15 @@ export default function RubricGenerator({ selectedStandards, rubric, onRubricCha
                 />
               </div>
               {rubric.source === 'local-fallback' && (
-                <p className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-600 ring-1 ring-amber-100">
-                  <WifiOff className="h-3 w-3" aria-hidden="true" />
-                  AI 서버 미연결 — 성취기준 기반 참고용 초안입니다
-                </p>
+                <div className="mt-1.5">
+                  <p className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-600 ring-1 ring-amber-100">
+                    <WifiOff className="h-3 w-3" aria-hidden="true" />
+                    AI 서버 미연결 — 성취기준 기반 참고용 초안입니다
+                  </p>
+                  {rubric.failReason && (
+                    <p className="mt-1 text-[10px] text-amber-500/80">사유: {rubric.failReason}</p>
+                  )}
+                </div>
               )}
             </div>
             <p className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-emerald-600 ring-1 ring-emerald-100">

@@ -185,7 +185,10 @@ export async function generateRubric(standards, topic = '') {
     };
   } catch (err) {
     console.warn('[백워드 AI] 루브릭 API 호출 실패, 로컬 폴백 사용:', err?.message);
-    return buildLocalRubricFallback(standards, payload.topic);
+    return {
+      ...buildLocalRubricFallback(standards, payload.topic),
+      failReason: String(err?.message || ''),
+    };
   }
 }
 
@@ -266,7 +269,10 @@ export async function generateLessonPlan({ standards, rubric, topic = '' }) {
     return { source: 'ai', ...withRowIds(data) };
   } catch (err) {
     console.warn('[백워드 AI] 과정안 API 호출 실패, 로컬 폴백 사용:', err?.message);
-    return buildLocalLessonFallback({ standards, rubric, topic: payload.topic });
+    return {
+      ...buildLocalLessonFallback({ standards, rubric, topic: payload.topic }),
+      failReason: String(err?.message || ''),
+    };
   }
 }
 

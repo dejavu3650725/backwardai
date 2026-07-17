@@ -287,10 +287,17 @@ export default function LessonPlanGenerator({
               />
             </div>
             {lessonPlan.source === 'local-fallback' && (
-              <p className="no-print mt-2 inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-600 ring-1 ring-amber-100">
-                <WifiOff className="h-3 w-3" aria-hidden="true" />
-                AI 서버 미연결 — 루브릭 기반 참고용 초안입니다
-              </p>
+              <div className="no-print mt-2">
+                <p className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-600 ring-1 ring-amber-100">
+                  <WifiOff className="h-3 w-3" aria-hidden="true" />
+                  AI 서버 미연결 — 루브릭 기반 참고용 초안입니다
+                </p>
+                {lessonPlan.failReason && (
+                  <p className="mt-1 text-[10px] text-amber-500/80">
+                    사유: {lessonPlan.failReason}
+                  </p>
+                )}
+              </div>
             )}
           </div>
 

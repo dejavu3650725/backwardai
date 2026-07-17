@@ -146,9 +146,13 @@ export async function callGemini(apiKey, prompt, { maxTokens = 4000, temperature
     const body = await response.text();
     lastError = `Gemini API ${response.status} (모델: ${model}): ${body.slice(0, 200)}`;
 
-    // 404(존재하지 않는 모델)만 다음 후보로 넘어가고,
-    // 401/403 등 인증·권한 오류는 모델을 바꿔도 소용없으므로 즉시 중단
-    if (response.status !== 404) break;
+    // 모델을 바꾸면 해결될 수 있는 오류는 다음 후보 모델로 자동 전환:
+    //  - 404: 존재하지 않는 모델
+    //  - 429: 해당 모델의 무료 한도 소진 (Gemini는 모델별 쿼터가 분리됨)
+    //  - 500/503: 해당 모델 서버 혼잡·일시 장애
+    const switchable =
+      response.status === 404 || response.status === 429 || response.status >= 500;
+    if (!switchable) break; // 400/401/403 등 인증·요청 오류는 모델 교체로 해결 불가
     if (cachedGeminiModel === model) cachedGeminiModel = null;
   }
 
