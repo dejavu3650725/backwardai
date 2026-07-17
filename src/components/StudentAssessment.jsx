@@ -31,6 +31,20 @@ import {
   rememberStudentSubmission,
   recallStudentSubmission,
 } from '../lib/assessmentStore.js';
+import { translateFeedback } from '../lib/aiClient.js';
+
+/** 다문화 학생을 위한 피드백 번역 언어 */
+const FEEDBACK_LANGUAGES = [
+  { key: 'ko', label: '한국어' },
+  { key: 'en', label: 'English' },
+  { key: 'zh', label: '中文' },
+  { key: 'vi', label: 'Tiếng Việt' },
+  { key: 'ru', label: 'Русский' },
+  { key: 'ja', label: '日本語' },
+  { key: 'th', label: 'ไทย' },
+  { key: 'mn', label: 'Монгол' },
+  { key: 'tl', label: 'Filipino' },
+];
 
 /** 자기평가 선택지 (학생 친화 라벨) */
 const SELF_LEVELS = [
@@ -55,6 +69,30 @@ export default function StudentAssessment({ code }) {
   const [submitting, setSubmitting] = useState(false);
   const [submission, setSubmission] = useState(null); // 실시간 구독 결과
   const [error, setError] = useState('');
+
+  /* ── 피드백 다국어 번역 상태 ─────────────────────────── */
+  const [lang, setLang] = useState('ko');
+  const [translations, setTranslations] = useState({}); // lang → Map(qid→text)
+  const [translating, setTranslating] = useState(false);
+
+  const handleLangChange = useCallback(
+    async (nextLang) => {
+      setLang(nextLang);
+      if (nextLang === 'ko' || translations[nextLang] || !submission?.aiEval?.items) return;
+      setTranslating(true);
+      try {
+        const texts = submission.aiEval.items.map((it) => ({ id: it.qid, text: it.feedback }));
+        const map = await translateFeedback(nextLang, texts);
+        setTranslations((prev) => ({ ...prev, [nextLang]: map }));
+      } catch (err) {
+        console.warn('번역 실패:', err?.message);
+        setLang('ko'); // 실패 시 원문으로 복귀
+      } finally {
+        setTranslating(false);
+      }
+    },
+    [translations, submission]
+  );
 
   /* ── 세션 로드 + 이전 제출 복원 ─────────────────────────── */
   useEffect(() => {
@@ -364,9 +402,38 @@ export default function StudentAssessment({ code }) {
                     선생님의 피드백이 도착했어요!
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">{studentName} 님, 수고했어요 👏</p>
+
+                  {/* 다문화 학생을 위한 언어 선택 */}
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+                    <span className="text-xs text-slate-400">🌐</span>
+                    {FEEDBACK_LANGUAGES.map((l) => (
+                      <button
+                        key={l.key}
+                        type="button"
+                        onClick={() => handleLangChange(l.key)}
+                        disabled={translating}
+                        aria-pressed={lang === l.key}
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 transition-colors ${
+                          lang === l.key
+                            ? 'bg-emerald-500 text-white ring-emerald-500'
+                            : 'bg-white text-slate-500 ring-slate-200 hover:bg-emerald-50 hover:text-emerald-600'
+                        }`}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                  {translating && (
+                    <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-slate-400">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                      번역하는 중…
+                    </p>
+                  )}
                 </div>
                 {(submission.aiEval?.items || []).map((item) => {
                   const q = questions.find((qq) => qq.qid === item.qid);
+                  const translated =
+                    lang !== 'ko' ? translations[lang]?.get(item.qid) : null;
                   return (
                     <div key={item.qid} className="card p-5">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -380,8 +447,13 @@ export default function StudentAssessment({ code }) {
                         </span>
                       </div>
                       <p className="rounded-xl bg-gradient-to-r from-emerald-50/80 to-sky-50/80 px-4 py-3 text-sm leading-relaxed text-slate-700">
-                        💌 {item.feedback}
+                        💌 {translated || item.feedback}
                       </p>
+                      {translated && (
+                        <p className="mt-1.5 px-1 text-xs leading-relaxed text-slate-400">
+                          {item.feedback}
+                        </p>
+                      )}
                     </div>
                   );
                 })}

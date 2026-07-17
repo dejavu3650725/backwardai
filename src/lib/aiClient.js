@@ -26,6 +26,9 @@ const EXPAND_ENDPOINT = '/api/expand-keywords';
 const RUBRIC_ENDPOINT = '/api/generate-rubric';
 const LESSON_ENDPOINT = '/api/generate-lesson';
 const EVALUATE_ENDPOINT = '/api/evaluate-answer';
+const QUESTIONS_ENDPOINT = '/api/generate-questions';
+const TRANSLATE_ENDPOINT = '/api/translate-feedback';
+const RECORD_ENDPOINT = '/api/generate-record';
 const REQUEST_TIMEOUT_MS = 30000;
 // 서버 함수 제한(60초)보다 넉넉하게 — 긴 과정안 생성 중 클라이언트가
 // 먼저 포기하고 폴백으로 떨어지는 일을 방지
@@ -415,6 +418,70 @@ function buildLocalEvaluationFallback({ studentName, questions, answers }) {
     }),
     overall: 'AI 서버 미연결 상태로 생성된 임시 초안입니다. 수준과 피드백을 직접 확인해 주세요.',
   };
+}
+
+/* ==================================================================
+ * Phase 5 — 학생 눈높이 문항 · 다국어 번역 · 생기부 문구
+ * ================================================================== */
+
+/**
+ * 평가 문항을 초등학생 눈높이의 쉬운 말로 다듬기
+ * 실패 시 원래 템플릿 문항을 그대로 유지 (조용한 폴백)
+ * @returns {Promise<Map<qid, prompt> | null>}
+ */
+export async function refineStudentQuestions({ grade, items }) {
+  try {
+    const data = await postJson(
+      QUESTIONS_ENDPOINT,
+      {
+        grade,
+        items: items.map(({ qid, element, method, type }) => ({ qid, element, method, type })),
+      },
+      LONG_REQUEST_TIMEOUT_MS
+    );
+    if (!Array.isArray(data.items) || data.items.length === 0) return null;
+    return new Map(data.items.map((it) => [it.qid, it.prompt]));
+  } catch (err) {
+    console.warn('[백워드 AI] 문항 다듬기 실패(템플릿 유지):', err?.message);
+    return null;
+  }
+}
+
+/**
+ * 승인된 피드백 다국어 번역 (다문화 학생 지원)
+ * @param {string} language 언어 코드 (en/zh/vi/ru/ja/th/mn/tl)
+ * @param {Array<{id, text}>} texts
+ * @returns {Promise<Map<id, text>>} 실패 시 예외
+ */
+export async function translateFeedback(language, texts) {
+  const data = await postJson(TRANSLATE_ENDPOINT, { language, texts }, LONG_REQUEST_TIMEOUT_MS);
+  if (!Array.isArray(data.items) || data.items.length === 0) {
+    throw new Error('번역 결과가 비어 있습니다.');
+  }
+  return new Map(data.items.map((it) => [it.id, it.text]));
+}
+
+/**
+ * 학교생활기록부 문구 생성 (기재요령 준수)
+ * @returns {Promise<{ source, text }>}
+ */
+export async function generateRecord({ grade, maxLength, records }) {
+  try {
+    const data = await postJson(
+      RECORD_ENDPOINT,
+      { grade, maxLength, records },
+      LONG_REQUEST_TIMEOUT_MS
+    );
+    if (!data.text) throw new Error('생성된 문구가 비어 있습니다.');
+    return { source: 'ai', text: data.text };
+  } catch (err) {
+    console.warn('[백워드 AI] 생기부 문구 API 실패, 로컬 초안 사용:', err?.message);
+    // 폴백: 승인된 피드백을 개조식으로 단순 조립 (교사 수정 전제)
+    const text = records
+      .map((r) => `${firstClause(r.element)} 활동에 성실히 참여하여 자신의 생각을 표현함.`)
+      .join(' ');
+    return { source: 'local-fallback', text: `${text} (AI 미연결 임시 초안 — 직접 수정 필요)` };
+  }
 }
 
 /* ==================================================================

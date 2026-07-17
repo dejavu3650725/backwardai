@@ -148,7 +148,7 @@ export default function App() {
       case 'assessment':
         return <AssessmentFeedback rubric={rubric} />;
       case 'record':
-        return <RecordLinker selectedStandards={selectedStandards} />;
+        return <RecordLinker />;
       default:
         return null;
     }

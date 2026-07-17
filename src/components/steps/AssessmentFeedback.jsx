@@ -42,8 +42,14 @@ import {
   recallTeacherSession,
   forgetTeacherSession,
 } from '../../lib/assessmentStore.js';
-import { evaluateSubmission } from '../../lib/aiClient.js';
+import { evaluateSubmission, refineStudentQuestions } from '../../lib/aiClient.js';
 import EditableCell from '../EditableCell.jsx';
+
+/** 성취기준 코드 첫 자리로 학년군 추정 (예: 6실04-05 → 5~6학년) */
+function gradeFromRubric(rubric) {
+  const first = String(rubric?.items?.[0]?.code || '').charAt(0);
+  return { 2: '초등학교 1~2학년', 4: '초등학교 3~4학년', 6: '초등학교 5~6학년' }[first] || '초등학교';
+}
 
 const LEVEL_KO = { high: '상', mid: '중', low: '하' };
 const LEVEL_CHIP = {
@@ -64,12 +70,26 @@ export default function AssessmentFeedback({ rubric }) {
   const [copied, setCopied] = useState(false);
   const [evaluatingIds, setEvaluatingIds] = useState(new Set());
 
-  /* ── 루브릭 → 문항 초안 구성 ───────────────────────────── */
+  const [refining, setRefining] = useState(false);
+
+  /* ── 루브릭 → 문항 초안 구성 + AI가 학생 눈높이 문구로 다듬기 ── */
   useEffect(() => {
-    if (rubric && !draftQuestions) {
-      setDraftQuestions(buildQuestionsFromRubric(rubric));
-      setTitle((t) => t || `${rubric.title.replace(/ \(참고용 초안\)/, '')}`);
-    }
+    if (!rubric || draftQuestions) return;
+    const base = buildQuestionsFromRubric(rubric);
+    setDraftQuestions(base);
+    setTitle((t) => t || `${rubric.title.replace(/ \(참고용 초안\)/, '')}`);
+
+    // 템플릿 문항을 초등학생 눈높이의 쉬운 말로 자동 변환 (실패 시 템플릿 유지)
+    setRefining(true);
+    refineStudentQuestions({ grade: gradeFromRubric(rubric), items: base })
+      .then((refined) => {
+        if (refined) {
+          setDraftQuestions((prev) =>
+            (prev || base).map((q) => ({ ...q, prompt: refined.get(q.qid) || q.prompt }))
+          );
+        }
+      })
+      .finally(() => setRefining(false));
   }, [rubric, draftQuestions]);
 
   /* ── 이전 세션 복원 (새로고침 대비) ────────────────────── */
@@ -245,6 +265,13 @@ export default function AssessmentFeedback({ rubric }) {
               </p>
             </div>
           </div>
+
+          {refining && (
+            <p className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-600 ring-1 ring-emerald-100">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              AI가 문항을 초등학생 눈높이의 쉬운 말로 다듬는 중…
+            </p>
+          )}
 
           <input
             type="text"

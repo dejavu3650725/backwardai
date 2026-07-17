@@ -130,6 +130,11 @@ export async function saveEvaluation(code, submissionId, aiEval) {
   });
 }
 
+/** (교사) 생기부 문구 저장 (Step 5) */
+export async function saveRecord(code, submissionId, record) {
+  await updateDoc(doc(db, 'sessions', code, 'submissions', submissionId), { record });
+}
+
 /** (교사) 승인 → 학생에게 피드백 공개 */
 export async function approveSubmission(code, submissionId, aiEval) {
   await updateDoc(doc(db, 'sessions', code, 'submissions', submissionId), {
