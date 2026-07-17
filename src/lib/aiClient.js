@@ -26,8 +26,10 @@ const EXPAND_ENDPOINT = '/api/expand-keywords';
 const RUBRIC_ENDPOINT = '/api/generate-rubric';
 const LESSON_ENDPOINT = '/api/generate-lesson';
 const EVALUATE_ENDPOINT = '/api/evaluate-answer';
-const REQUEST_TIMEOUT_MS = 25000;
-const LONG_REQUEST_TIMEOUT_MS = 55000;
+const REQUEST_TIMEOUT_MS = 30000;
+// 서버 함수 제한(60초)보다 넉넉하게 — 긴 과정안 생성 중 클라이언트가
+// 먼저 포기하고 폴백으로 떨어지는 일을 방지
+const LONG_REQUEST_TIMEOUT_MS = 90000;
 
 /** 공통 POST 헬퍼 (타임아웃 포함) */
 async function postJson(endpoint, body, timeoutMs = REQUEST_TIMEOUT_MS) {

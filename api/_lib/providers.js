@@ -185,22 +185,98 @@ export async function callClaude(apiKey, prompt, { maxTokens = 1500, temperature
   return text;
 }
 
-/* ── 관용적 JSON 파서 ──────────────────────────────────────────── */
+/* ── 관용적 JSON 파서 + 자동 수리 ─────────────────────────────── */
+/**
+ * AI 응답에서 JSON을 최대한 살려내는 다단계 파서.
+ * 긴 과정안처럼 복잡한 응답에서 자주 생기는 두 가지 고장을 수리한다:
+ *   1) 문자열 안의 원시 줄바꿈/탭 (JSON 규격 위반) → \\n 으로 이스케이프
+ *   2) 끝이 잘린 응답 → 열린 따옴표/괄호를 자동으로 닫음
+ */
 export function extractJson(text) {
   const cleaned = String(text)
     .replace(/```json/gi, '')
     .replace(/```/g, '')
     .trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start !== -1 && end > start) {
-      return JSON.parse(cleaned.slice(start, end + 1));
+
+  const start = cleaned.indexOf('{');
+  const body = start === -1 ? cleaned : cleaned.slice(start);
+  const lastBrace = body.lastIndexOf('}');
+
+  const attempts = [cleaned, body];
+  if (lastBrace > 0) attempts.push(body.slice(0, lastBrace + 1));
+
+  const repaired = escapeControlCharsInStrings(body);
+  const repairedLastBrace = repaired.lastIndexOf('}');
+  attempts.push(repaired);
+  if (repairedLastBrace > 0) attempts.push(repaired.slice(0, repairedLastBrace + 1));
+  attempts.push(autoCloseJson(repaired));
+
+  for (const candidate of attempts) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      /* 다음 후보 시도 */
     }
-    throw new Error('AI 응답에서 JSON을 파싱할 수 없습니다.');
   }
+  throw new Error('AI 응답에서 JSON을 파싱할 수 없습니다.');
+}
+
+/** 문자열 리터럴 내부의 원시 제어문자를 이스케이프 */
+function escapeControlCharsInStrings(src) {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (const ch of src) {
+    if (inString) {
+      if (escaped) {
+        out += ch;
+        escaped = false;
+      } else if (ch === '\\') {
+        out += ch;
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+        out += ch;
+      } else if (ch === '\n') {
+        out += '\\n';
+      } else if (ch === '\r') {
+        out += '\\r';
+      } else if (ch === '\t') {
+        out += '\\t';
+      } else {
+        out += ch;
+      }
+    } else {
+      if (ch === '"') inString = true;
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/** 끝이 잘린 JSON의 열린 따옴표·괄호를 자동으로 닫음 */
+function autoCloseJson(src) {
+  let inString = false;
+  let escaped = false;
+  const stack = [];
+  for (const ch of src) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{' || ch === '[') stack.push(ch);
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  let out = src;
+  if (inString) out += '"';
+  out = out.replace(/,\s*$/, '');
+  while (stack.length > 0) {
+    out += stack.pop() === '{' ? '}' : ']';
+  }
+  return out;
 }
 
 /** 문자열 안전 변환 (+ 길이 제한) */
