@@ -89,7 +89,7 @@ export async function recommendStandards(topic, opts = {}) {
       const expanded = await postJson(
         EXPAND_ENDPOINT,
         { topic: trimmed, grade: opts.grade || null },
-        REQUEST_TIMEOUT_MS
+        LONG_REQUEST_TIMEOUT_MS
       );
       if (Array.isArray(expanded.keywords) && expanded.keywords.length > 0) {
         const rescored = scoreByKeywords(expanded.keywords, {
@@ -109,16 +109,11 @@ export async function recommendStandards(topic, opts = {}) {
     candidates = mergeByCode(candidates, getBalancedSample(opts.grade || null, 4), 48);
   }
 
-  // 2) 백엔드 호출
+  // 2) 백엔드 호출 (긴 대기 허용 — 콜드 스타트 + 2단계 AI 호출 대비)
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-    const res = await fetch(API_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
+    const data = await postJson(
+      API_ENDPOINT,
+      {
         topic: trimmed,
         grade: opts.grade || null,
         candidates: candidates.map((c) => ({
@@ -128,15 +123,9 @@ export async function recommendStandards(topic, opts = {}) {
           area: c.area,
           description: c.description,
         })),
-      }),
-    });
-    clearTimeout(timer);
-
-    if (!res.ok) {
-      throw new Error(`API 응답 오류 (${res.status})`);
-    }
-
-    const data = await res.json();
+      },
+      LONG_REQUEST_TIMEOUT_MS
+    );
     if (!Array.isArray(data.items)) {
       throw new Error('API 응답 형식이 올바르지 않습니다.');
     }
@@ -160,7 +149,7 @@ export async function recommendStandards(topic, opts = {}) {
   } catch (err) {
     // 3) 폴백: 로컬 점수 기반 추천 (개발 환경/오프라인에서도 UI 동작 보장)
     console.warn('[백워드 AI] AI 백엔드 호출 실패, 로컬 폴백 사용:', err?.message);
-    return buildLocalFallback(trimmed, candidates);
+    return { ...buildLocalFallback(trimmed, candidates), failReason: String(err?.message || '') };
   }
 }
 
